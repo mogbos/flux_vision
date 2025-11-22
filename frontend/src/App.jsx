@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Connect from "./components/Connect.jsx";
+import Workspace from "./components/workspace/Workspace.jsx";
 
 const accents = [
   "linear-gradient(135deg, #7c3aed 0%, #2563eb 50%, #0ea5e9 100%)",
@@ -21,10 +22,35 @@ const quickActions = [
 ];
 
 function App() {
-  const [view, setView] = useState("landing");
+  const getViewFromLocation = () => {
+    const hash = window.location.hash.replace("#", "");
+    if (hash === "credentials" || hash === "workspace") return hash;
+    return "landing";
+  };
+
+  const [view, setView] = useState(() => getViewFromLocation());
   const today = useMemo(() => new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", weekday: "short" }), []);
 
-  const handleLaunch = () => setView("credentials");
+  useEffect(() => {
+    const url = view === "landing" ? "/" : `/#${view}`;
+    window.history.replaceState({ view }, "", url);
+    const onPop = (event) => {
+      const next = event.state?.view || getViewFromLocation();
+      setView(next);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const navigate = (nextView) => {
+    setView(nextView);
+    const url = nextView === "landing" ? "/" : `/#${nextView}`;
+    window.history.pushState({ view: nextView }, "", url);
+  };
+
+  const handleLaunch = () => navigate("credentials");
+  const handleConnected = () => navigate("workspace");
 
   return (
     <div className="page">
@@ -111,7 +137,11 @@ function App() {
       )}
 
       {view === "credentials" && (
-        <Connect onBack={() => setView("landing")} />
+        <Connect onBack={() => window.history.back()} onConnected={handleConnected} />
+      )}
+
+      {view === "workspace" && (
+        <Workspace />
       )}
     </div>
   );

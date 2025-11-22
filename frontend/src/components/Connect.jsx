@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 
-function Connect({ onBack }) {
+function Connect({ onBack, onConnected }) {
   const [credentials, setCredentials] = useState({
     url: "",
     org: "",
     token: "",
   });
   const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [checkState, setCheckState] = useState({
+    status: "idle", // idle | checking | ok | error
+    message: "",
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -33,7 +36,9 @@ function Connect({ onBack }) {
         }
       })
       .catch((err) => {
-        if (isMounted) setError(err.message || "Failed to load saved credentials");
+        if (isMounted) {
+          setCheckState({ status: "error", message: err.message || "Failed to load saved credentials" });
+        }
       })
       .finally(() => {
         if (isMounted) setInitializing(false);
@@ -46,8 +51,8 @@ function Connect({ onBack }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitted(false);
-    setError("");
     setLoading(true);
+    setCheckState({ status: "idle", message: "" });
 
     try {
       const res = await fetch("/api/credentials", {
@@ -65,8 +70,22 @@ function Connect({ onBack }) {
         throw new Error(payload.detail || res.statusText);
       }
       setSubmitted(true);
+
+      // After saving, check Influx connectivity.
+      setCheckState({ status: "checking", message: "Pinging InfluxDB…" });
+      const checkRes = await fetch("/api/influx/check");
+      const checkPayload = await checkRes.json().catch(() => ({}));
+      if (!checkRes.ok) {
+        throw new Error(checkPayload.detail || checkRes.statusText);
+      }
+      setCheckState({ status: "ok", message: "Connected to InfluxDB." });
+      if (typeof onConnected === "function") {
+        onConnected();
+      }
     } catch (err) {
-      setError(err.message || "Failed to save credentials");
+      const message = err.message || "Failed to save credentials";
+      setCheckState({ status: "error", message });
+      setSubmitted(false);
     } finally {
       setLoading(false);
     }
@@ -128,11 +147,36 @@ function Connect({ onBack }) {
             {loading ? "Saving..." : "Connect"}
           </button>
         </div>
-        {submitted && (
-          <div className="notice">Credentials captured. Hook this up to your backend connect flow.</div>
+        {submitted && checkState.status === "ok" && (
+          <div className="notice">Credentials captured and InfluxDB is reachable.</div>
         )}
-        {error && <div className="notice error">Error: {error}</div>}
         {initializing && <div className="notice">Loading saved credentials…</div>}
+
+        {checkState.status !== "idle" && (
+          <div
+            className={`status-card ${
+              checkState.status === "ok"
+                ? "status-ok"
+                : checkState.status === "checking"
+                  ? "status-checking"
+                  : "status-error"
+            }`}
+          >
+            <div className="status-dot" />
+            <div>
+              <div className="status-title">
+                {checkState.status === "ok"
+                  ? "InfluxDB reachable"
+                  : checkState.status === "checking"
+                    ? "Checking connectivity"
+                    : "InfluxDB not reachable"}
+              </div>
+              <div className="muted small">
+                {checkState.message || "No additional details."}
+              </div>
+            </div>
+          </div>
+        )}
       </form>
     </section>
   );

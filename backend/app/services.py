@@ -11,7 +11,6 @@ from .schemas import Credentials
 
 def load_credentials() -> Credentials:
     """Load credentials from env vars first, otherwise from saved JSON."""
-
     if CREDENTIALS_FILE.exists():
         try:
             data = json.loads(CREDENTIALS_FILE.read_text())
